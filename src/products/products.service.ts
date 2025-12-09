@@ -1,8 +1,14 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from 'src/prisma.service';
 import { Product } from 'src/generated/prisma/client';
+import { PaginationDto } from 'src/common';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
@@ -20,20 +26,54 @@ export class ProductsService implements OnModuleInit {
     });
   }
 
-  findAll() {
-    return `This action returns all products`;
+  async findAll(paginationDto: PaginationDto) {
+    const { page, limit } = paginationDto;
+    const totalPage = await this.prismaService.product.count({
+      where: { available: true },
+    });
+    const lastPage = Math.ceil(totalPage / limit);
+
+    return {
+      data: await this.prismaService.product.findMany({
+        skip: (page - 1) * limit,
+        take: limit,
+        where: {
+          available: true,
+        },
+      }),
+      meta: {
+        total: totalPage,
+        page: page,
+        lastpage: lastPage,
+      },
+    };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} product`;
+  async findOne(id: number) {
+    const product = await this.prismaService.product.findFirst({
+      where: { Id: id, available: true },
+    });
+    if (!product) {
+      throw new NotFoundException(`Product with the id #${id} not found!`);
+    }
+    return product;
   }
 
-  update(id: number, updateProductDto: UpdateProductDto) {
-    console.log({ updateProductDto });
-    return `This action updates a #${id} product`;
+  async update(id: number, updateProductDto: UpdateProductDto) {
+    await this.findOne(id);
+
+    return this.prismaService.product.update({
+      where: { Id: id },
+      data: updateProductDto,
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} product`;
+  async remove(id: number) {
+    await this.findOne(id);
+    // return this.prismaService.product.delete({ where: { Id: id } });
+    return await this.prismaService.product.update({
+      where: { Id: id },
+      data: { available: false },
+    });
   }
 }
